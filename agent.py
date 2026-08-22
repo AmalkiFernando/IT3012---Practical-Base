@@ -1,4 +1,10 @@
 # agent.py
+import random
+import math
+import heapq
+from collections import deque
+
+
 class GreedyGridAgent:
     """A simple agent that tries to move around systematically to clear the grid."""
 
@@ -11,142 +17,73 @@ class GreedyGridAgent:
         # Simple heuristic or fallback random sweep
         return random.choice(self.actions_pool)
 
-# Step 1.2: Implementing BFS, DFS, and UCS
-from collections import deque
-import heapq
-import itertools
-import math
-
-
 class SearchAgent:
-    """Uninformed search strategies (BFS, DFS, UCS) over the grid.
-
-    All three share the same successor generation and path reconstruction;
-    only the Frontier data structure differs, which is what actually
-    distinguishes the three algorithms.
-    """
-
-    def __init__(self, grid_size, walls):
-        self.width, self.height = grid_size
-        self.walls = set(walls)
+    def __init__(self, active_algo='BFS'):
         self.plan = []
-        self.active_algo = 'BFS'
+        self.active_algo = active_algo  # Options: 'BFS', 'DFS', 'UCS'
 
-    def get_successors(self, state):
+    def get_neighbors(self, state, grid_size, walls):
         x, y = state
-        moves = [
-            ('Up', (x, y + 1)),
-            ('Down', (x, y - 1)),
-            ('Left', (x - 1, y)),
-            ('Right', (x + 1, y)),
+        width, height = grid_size
+        actions = [
+            ('UP', (x, y + 1)),
+            ('DOWN', (x, y - 1)),
+            ('LEFT', (x - 1, y)),
+            ('RIGHT', (x + 1, y))
         ]
-        successors = []
-        for action, (nx, ny) in moves:
-            if 0 <= nx < self.width and 0 <= ny < self.height and (nx, ny) not in self.walls:
-                successors.append((action, (nx, ny), 1))
-        return successors
+        valid_neighbors = []
+        for action, (nx, ny) in actions:
+            if 0 <= nx < width and 0 <= ny < height and (nx, ny) not in walls:
+                valid_neighbors.append((action, (nx, ny)))
+        return valid_neighbors
 
-    def sense_and_act(self, percept: dict) -> str:
-        if not self.plan:
-            agent_pos = tuple(percept['agent_pos'])
-            food = percept['all_food']
-            if not food:
-                return 'Stop'
-
-            goal = min(food, key=lambda f: abs(f[0] - agent_pos[0]) + abs(f[1] - agent_pos[1]))
-
-            if self.active_algo == 'DFS':
-                path = self.dfs_search(agent_pos, goal)
-            elif self.active_algo == 'UCS':
-                path = self.ucs_search(agent_pos, goal)
-            elif self.active_algo == 'AStar':
-                walls = percept['walls']
-                grid_size = percept['grid_size']
-                goal_pos = min(food, key=lambda f: self.manhattan_distance(agent_pos, f))
-                path = self.astar_search(agent_pos, goal_pos, walls, grid_size, heuristic_type='manhattan')
-            else:
-                path = self.bfs_search(agent_pos, goal)
-
-            self.plan = path if path else []
-
-        if not self.plan:
-            return 'Stop'
-
-        return self.plan.pop(0)
-
-    def reconstruct_path(self, came_from, start, goal):
-        actions = []
-        state = goal
-        while state != start:
-            prev_state, action = came_from[state]
-            actions.append(action)
-            state = prev_state
-        actions.reverse()
-        return actions
-
-    def bfs_search(self, start, goal):
-        start, goal = tuple(start), tuple(goal)
-        if start == goal:
-            return []
-
-        frontier = deque([start])
+    def bfs_search(self, start, target, grid_size, walls):
+        frontier = deque([(start, [])])
         reached = {start}
-        came_from = {}
 
         while frontier:
-            state = frontier.popleft()
-            for action, next_state, _ in self.get_successors(state):
-                if next_state not in reached:
-                    reached.add(next_state)
-                    came_from[next_state] = (state, action)
-                    if next_state == goal:
-                        return self.reconstruct_path(came_from, start, goal)
-                    frontier.append(next_state)
-        return None
+            state, path = frontier.popleft()
+            if state == target:
+                return path
 
-    def dfs_search(self, start, goal):
-        start, goal = tuple(start), tuple(goal)
-        if start == goal:
-            return []
+            for action, neighbor in self.get_neighbors(state, grid_size, walls):
+                if neighbor not in reached:
+                    reached.add(neighbor)
+                    frontier.append((neighbor, path + [action]))
+        return []
 
-        frontier = [start]
+    def dfs_search(self, start, target, grid_size, walls):
+        frontier = [(start, [])]
         reached = {start}
-        came_from = {}
 
         while frontier:
-            state = frontier.pop()
-            if state == goal:
-                return self.reconstruct_path(came_from, start, goal)
-            for action, next_state, _ in self.get_successors(state):
-                if next_state not in reached:
-                    reached.add(next_state)
-                    came_from[next_state] = (state, action)
-                    frontier.append(next_state)
-        return None
+            state, path = frontier.pop()
+            if state == target:
+                return path
 
-    def ucs_search(self, start, goal):
-        start, goal = tuple(start), tuple(goal)
-        if start == goal:
-            return []
+            for action, neighbor in self.get_neighbors(state, grid_size, walls):
+                if neighbor not in reached:
+                    reached.add(neighbor)
+                    frontier.append((neighbor, path + [action]))
+        return []
 
-        tie_breaker = itertools.count()
-        frontier = [(0, next(tie_breaker), start)]
+    def ucs_search(self, start, target, grid_size, walls):
+        counter = 0
+        frontier = [(0, counter, start, [])]
         reached = {start: 0}
-        came_from = {}
 
         while frontier:
-            cost, _, state = heapq.heappop(frontier)
-            if state == goal:
-                return self.reconstruct_path(came_from, start, goal)
-            if cost > reached.get(state, float('inf')):
-                continue
-            for action, next_state, step_cost in self.get_successors(state):
-                new_cost = cost + step_cost
-                if next_state not in reached or new_cost < reached[next_state]:
-                    reached[next_state] = new_cost
-                    came_from[next_state] = (state, action)
-                    heapq.heappush(frontier, (new_cost, next(tie_breaker), next_state))
-        return None
+            cost, _, state, path = heapq.heappop(frontier)
+            if state == target:
+                return path
+
+            for action, neighbor in self.get_neighbors(state, grid_size, walls):
+                new_cost = cost + 1
+                if neighbor not in reached or new_cost < reached[neighbor]:
+                    reached[neighbor] = new_cost
+                    counter += 1
+                    heapq.heappush(frontier, (new_cost, counter, neighbor, path + [action]))
+        return []
 
     def manhattan_distance(self, pos, goal):
         x1, y1 = pos
@@ -159,20 +96,15 @@ class SearchAgent:
         return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 
     def astar_search(self, start_pos, goal_pos, walls, grid_size, heuristic_type='manhattan'):
-        start_pos, goal_pos = tuple(start_pos), tuple(goal_pos)
-        width, height = grid_size
-        walls = set(walls)
         heuristic = self.manhattan_distance if heuristic_type == 'manhattan' else self.euclidean_distance
 
-        frontier = []
+        counter = 0
+        start_h = heuristic(start_pos, goal_pos)
+        frontier = [(start_h, 0, counter, start_pos, [])]
         reached_states = set()
 
-        g_start = 0
-        h_start = heuristic(start_pos, goal_pos)
-        heapq.heappush(frontier, (g_start + h_start, g_start, start_pos, []))
-
         while frontier:
-            f_cost, g_cost, current_pos, path_taken = heapq.heappop(frontier)
+            f_cost, g_cost, _, current_pos, path_taken = heapq.heappop(frontier)
 
             if current_pos == goal_pos:
                 return path_taken
@@ -181,26 +113,42 @@ class SearchAgent:
                 continue
             reached_states.add(current_pos)
 
-            x, y = current_pos
-            moves = [
-                ('Up', (x, y + 1)),
-                ('Down', (x, y - 1)),
-                ('Left', (x - 1, y)),
-                ('Right', (x + 1, y)),
-            ]
-            for action, (nx, ny) in moves:
-                neighbor = (nx, ny)
-                if 0 <= nx < width and 0 <= ny < height and neighbor not in walls and neighbor not in reached_states:
+            for action, neighbor in self.get_neighbors(current_pos, grid_size, walls):
+                if neighbor not in reached_states:
                     g_new = g_cost + 1
                     h_new = heuristic(neighbor, goal_pos)
                     f_new = g_new + h_new
-                    heapq.heappush(frontier, (f_new, g_new, neighbor, path_taken + [action]))
+                    counter += 1
+                    heapq.heappush(frontier, (f_new, g_new, counter, neighbor, path_taken + [action]))
+        return []
 
-        return None
+    def sense_and_act(self, percept):
+        if not self.plan:
+            start = tuple(percept['agent_pos'])
+            all_food = percept['all_food']
+            if not all_food:
+                return 'STOP'
+
+            # Select nearest food using Manhattan distance
+            target = min(all_food, key=lambda f: abs(f[0] - start[0]) + abs(f[1] - start[1]))
+
+            grid_size = percept['grid_size']
+            walls = percept['walls']
+
+            if self.active_algo == 'BFS':
+                self.plan = self.bfs_search(start, target, grid_size, walls)
+            elif self.active_algo == 'DFS':
+                self.plan = self.dfs_search(start, target, grid_size, walls)
+            elif self.active_algo == 'UCS':
+                self.plan = self.ucs_search(start, target, grid_size, walls)
+            elif self.active_algo == 'AStar':
+                self.plan = self.astar_search(start, target, walls, grid_size, heuristic_type='manhattan')
+
+        return self.plan.pop(0) if self.plan else 'STOP'
 
 
-if __name__ == '__main__':
-    agent = SearchAgent(grid_size=(10, 10), walls=[])
-    start, goal = (0, 0), (3, 4)
-    print('Manhattan distance:', agent.manhattan_distance(start, goal))
-    print('Euclidean distance:', agent.euclidean_distance(start, goal))
+if __name__ == "__main__":
+    agent = SearchAgent()
+    start_pos, goal_pos = (0, 0), (3, 4)
+    print(f"Manhattan distance {start_pos} -> {goal_pos}: {agent.manhattan_distance(start_pos, goal_pos)}")
+    print(f"Euclidean distance {start_pos} -> {goal_pos}: {agent.euclidean_distance(start_pos, goal_pos)}")
