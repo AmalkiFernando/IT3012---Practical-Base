@@ -110,8 +110,8 @@ class GridGameGUI:
         self.env = VisualGridHuntGame(width=width, height=height, num_food=num_food, num_opponents=num_opponents,
                                       custom_walls=walls)
         self.agent = SearchAgent((self.env.width, self.env.height), self.env.walls)
-        # Change this to 'BFS', 'DFS', or 'UCS' to compare search strategies.
-        self.agent.active_algo = 'BFS'
+        # Change this to 'BFS', 'DFS', 'UCS', or 'AStar' to compare search strategies.
+        self.agent.active_algo = 'AStar'
 
         # Dynamically calculate cell size so the total canvas fits nicely within a 600x600 window ceiling
         max_canvas_dim = 600

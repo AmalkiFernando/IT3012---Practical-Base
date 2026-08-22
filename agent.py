@@ -15,6 +15,7 @@ class GreedyGridAgent:
 from collections import deque
 import heapq
 import itertools
+import math
 
 
 class SearchAgent:
@@ -58,6 +59,11 @@ class SearchAgent:
                 path = self.dfs_search(agent_pos, goal)
             elif self.active_algo == 'UCS':
                 path = self.ucs_search(agent_pos, goal)
+            elif self.active_algo == 'AStar':
+                walls = percept['walls']
+                grid_size = percept['grid_size']
+                goal_pos = min(food, key=lambda f: self.manhattan_distance(agent_pos, f))
+                path = self.astar_search(agent_pos, goal_pos, walls, grid_size, heuristic_type='manhattan')
             else:
                 path = self.bfs_search(agent_pos, goal)
 
@@ -141,3 +147,60 @@ class SearchAgent:
                     came_from[next_state] = (state, action)
                     heapq.heappush(frontier, (new_cost, next(tie_breaker), next_state))
         return None
+
+    def manhattan_distance(self, pos, goal):
+        x1, y1 = pos
+        x2, y2 = goal
+        return abs(x1 - x2) + abs(y1 - y2)
+
+    def euclidean_distance(self, pos, goal):
+        x1, y1 = pos
+        x2, y2 = goal
+        return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
+
+    def astar_search(self, start_pos, goal_pos, walls, grid_size, heuristic_type='manhattan'):
+        start_pos, goal_pos = tuple(start_pos), tuple(goal_pos)
+        width, height = grid_size
+        walls = set(walls)
+        heuristic = self.manhattan_distance if heuristic_type == 'manhattan' else self.euclidean_distance
+
+        frontier = []
+        reached_states = set()
+
+        g_start = 0
+        h_start = heuristic(start_pos, goal_pos)
+        heapq.heappush(frontier, (g_start + h_start, g_start, start_pos, []))
+
+        while frontier:
+            f_cost, g_cost, current_pos, path_taken = heapq.heappop(frontier)
+
+            if current_pos == goal_pos:
+                return path_taken
+
+            if current_pos in reached_states:
+                continue
+            reached_states.add(current_pos)
+
+            x, y = current_pos
+            moves = [
+                ('Up', (x, y + 1)),
+                ('Down', (x, y - 1)),
+                ('Left', (x - 1, y)),
+                ('Right', (x + 1, y)),
+            ]
+            for action, (nx, ny) in moves:
+                neighbor = (nx, ny)
+                if 0 <= nx < width and 0 <= ny < height and neighbor not in walls and neighbor not in reached_states:
+                    g_new = g_cost + 1
+                    h_new = heuristic(neighbor, goal_pos)
+                    f_new = g_new + h_new
+                    heapq.heappush(frontier, (f_new, g_new, neighbor, path_taken + [action]))
+
+        return None
+
+
+if __name__ == '__main__':
+    agent = SearchAgent(grid_size=(10, 10), walls=[])
+    start, goal = (0, 0), (3, 4)
+    print('Manhattan distance:', agent.manhattan_distance(start, goal))
+    print('Euclidean distance:', agent.euclidean_distance(start, goal))
